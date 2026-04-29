@@ -263,6 +263,31 @@
 
 .table thead th:first-child { width: 52px; text-align: center; }
 
+.sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  color: var(--blue-400);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+  transition: color var(--transition);
+}
+
+.sort-btn:hover { color: #93c5fd; }
+
+.sort-icon {
+  display: flex;
+  align-items: center;
+  opacity: 0.7;
+}
+
 .table tbody tr {
   border-bottom: 1px solid var(--border-2);
   transition: background var(--transition);

@@ -78,6 +78,7 @@ export default function App() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc' | null>(null)
 
   const animatedTotal = useAnimatedNumber(totalAmount)
 
@@ -129,6 +130,16 @@ export default function App() {
     setPage(p)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+
+  const toggleSort = () => {
+    setSortDir(prev => prev === null ? 'desc' : prev === 'desc' ? 'asc' : null)
+  }
+
+  const sortedSlips = data?.slips
+    ? sortDir === null
+      ? data.slips
+      : [...data.slips].sort((a, b) => sortDir === 'desc' ? b.amount - a.amount : a.amount - b.amount)
+    : []
 
   const renderPagination = () => {
     if (!data) return null
@@ -222,7 +233,19 @@ export default function App() {
                   <tr>
                     <th>#</th>
                     <th>การโอนเงิน</th>
-                    <th>จำนวนเงิน</th>
+                    <th>
+                      <button className="sort-btn" onClick={toggleSort} aria-label="เรียงตามจำนวนเงิน">
+                        จำนวนเงิน
+                        <span className="sort-icon">
+                          {sortDir === 'asc'
+                            ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                            : sortDir === 'desc'
+                            ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                            : <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
+                          }
+                        </span>
+                      </button>
+                    </th>
                     <th>วันที่โอน</th>
                     <th>อัปโหลดโดย</th>
                   </tr>
@@ -238,7 +261,7 @@ export default function App() {
                           <td><span className="skel short" /></td>
                         </tr>
                       ))
-                    : data?.slips.map((slip, idx) => (
+                    : sortedSlips.map((slip, idx) => (
                         <tr key={slip.id}>
                           <td className="col-id" data-label="#">{((page - 1) * LIMIT) + idx + 1}</td>
                           <td className="col-transfer" data-label="การโอนเงิน">
