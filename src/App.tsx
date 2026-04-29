@@ -536,7 +536,9 @@ export default function App() {
             <span>สร้างมาเพื่อดูข้อมูลสลิปบนมือถือได้ง่าย · กรองยอดเงินได้ · ยอดรวมอัปเดตอัตโนมัติ</span>
           </div>
           <div className="footer-credit">
-            ข้อมูลจาก
+            ขออนุญาต
+            <span className="footer-names">พี่คิง & พี่มาลี</span>
+            · ข้อมูลจาก
             <a href="http://whatsek.com/" target="_blank" rel="noopener noreferrer" className="footer-link">
               whatsek.com
               <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
