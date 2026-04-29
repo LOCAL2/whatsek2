@@ -298,9 +298,11 @@ export default function App() {
 
       <main className="main">
         {/* Disclaimer banner */}
-        <div className="disclaimer-banner">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-          <span>website นี้ไม่มีเจตนาที่ไม่ดี ทำขึ้นเพื่อดูข้อมูลบนมือถือได้ง่าย หากทำผิดพลาดยินดีปิดทันที</span>
+        <div className="disclaimer-wrap">
+          <div className="disclaimer-banner">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+            <span>website นี้ไม่มีเจตนาที่ไม่ดี ทำขึ้นเพื่อดูข้อมูลบนมือถือได้ง่าย หากทำผิดพลาดยินดีปิด Website ทันที</span>
+          </div>
         </div>
         {/* Summary */}
         {data && (
@@ -537,18 +539,20 @@ export default function App() {
 
       <footer className="footer">
         <div className="container footer-inner">
-          <div className="footer-desc">
-            <span>สร้างมาเพื่อดูข้อมูลสลิปบนมือถือได้ง่าย · กรองยอดเงินได้ · ยอดรวมอัปเดตอัตโนมัติ</span>
-            <span className="footer-disclaimer">ไม่มีเจตนาที่ไม่ดี หากทำผิดพลาดยินดีปิด website ทันที</span>
+          <div className="footer-left">
+            <div className="footer-credit">
+              ขออนุญาต <span className="footer-names">พี่คิง & พี่มาลี & ทีมงานทุกๆคน</span>
+            </div>
+            <div className="footer-source">
+              ข้อมูลจาก
+              <a href="http://whatsek.com/" target="_blank" rel="noopener noreferrer" className="footer-link">
+                whatsek.com
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
+              </a>
+            </div>
           </div>
-          <div className="footer-credit">
-            ขออนุญาต
-            <span className="footer-names">พี่คิง & พี่มาลี & ทีมงานทุกๆคน</span>
-            · ข้อมูลจาก
-            <a href="http://whatsek.com/" target="_blank" rel="noopener noreferrer" className="footer-link">
-              whatsek.com
-              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
-            </a>
+          <div className="footer-right">
+            <span className="footer-disclaimer">ไม่มีเจตนาที่ไม่ดี หากทำผิดพลาดยินดีปิด website ทันที</span>
           </div>
         </div>
       </footer>
