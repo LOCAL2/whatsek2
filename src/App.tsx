@@ -72,13 +72,42 @@ function useAnimatedNumber(target: number, duration = 800) {
   return display
 }
 
+function RealtimeDot() {
+  return (
+    <div className="stat-realtime">
+      <span className="stat-dot" aria-hidden="true" />
+      อัปเดตอัตโนมัติ
+    </div>
+  )
+}
+
 export default function App() {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [totalAmount, setTotalAmount] = useState(0)
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useState(() => {
+    const p = new URLSearchParams(window.location.search).get('page')
+    return p ? Math.max(1, parseInt(p)) : 1
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc' | null>(null)
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
+  const [allSlips, setAllSlips] = useState<Slip[] | null>(null)
+  const [fetchingAll, setFetchingAll] = useState(false)
+  const [fetchAllProgress, setFetchAllProgress] = useState(0)
+
+  const tableBodyRef = useRef<HTMLDivElement>(null)
+
+  // measure actual row height and set exact container height for 10 rows
+  useEffect(() => {
+    if (!tableBodyRef.current || loading) return
+    const thead = tableBodyRef.current.querySelector('thead') as HTMLElement | null
+    const firstRow = tableBodyRef.current.querySelector('tbody tr') as HTMLElement | null
+    if (!firstRow) return
+    const rowH = firstRow.getBoundingClientRect().height
+    const theadH = thead ? thead.getBoundingClientRect().height : 0
+    tableBodyRef.current.style.height = `${theadH + rowH * LIMIT}px`
+  }, [loading])
 
   const animatedTotal = useAnimatedNumber(totalAmount)
 
@@ -125,46 +154,122 @@ export default function App() {
     fetchData(page)
   }, [page, fetchData])
 
+  useEffect(() => {
+    const onPop = () => {
+      const p = new URLSearchParams(window.location.search).get('page')
+      setPage(p ? Math.max(1, parseInt(p)) : 1)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
   const goTo = (p: number) => {
-    if (!data || p < 1 || p > data.totalPages) return
+    if (p < 1 || p > displayTotalPages) return
     setPage(p)
+    const params = new URLSearchParams(window.location.search)
+    params.set('page', String(p))
+    window.history.pushState(null, '', `?${params.toString()}`)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const toggleSort = () => {
-    setSortDir(prev => prev === null ? 'desc' : prev === 'desc' ? 'asc' : null)
+  const toggleSort = () => setSortMenuOpen(prev => !prev)
+
+  const selectSort = (dir: 'asc' | 'desc' | null) => {
+    setSortMenuOpen(false)
+    setSortDir(dir)
+    if (dir !== null && allSlips === null && !fetchingAll) {
+      fetchAllSlips()
+    }
   }
 
-  const sortedSlips = data?.slips
-    ? sortDir === null
-      ? data.slips
-      : [...data.slips].sort((a, b) => sortDir === 'desc' ? b.amount - a.amount : a.amount - b.amount)
-    : []
+  useEffect(() => {
+    if (!sortMenuOpen) return
+    const close = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.sort-menu-wrap')) setSortMenuOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [sortMenuOpen])
+
+  const fetchAllSlips = useCallback(async () => {
+    setFetchingAll(true)
+    setFetchAllProgress(0)
+    try {
+      // get total first
+      const first = await fetch(`${API_BASE}/slips?page=1&limit=100`)
+      if (!first.ok) throw new Error(`HTTP ${first.status}`)
+      const firstJson: ApiResponse = await first.json()
+      const totalPages = firstJson.totalPages
+      const collected: Slip[] = [...firstJson.slips]
+      setFetchAllProgress(1 / totalPages)
+
+      // fetch remaining pages in batches of 5
+      const BATCH = 5
+      for (let p = 2; p <= totalPages; p += BATCH) {
+        const batch = Array.from({ length: Math.min(BATCH, totalPages - p + 1) }, (_, i) =>
+          fetch(`${API_BASE}/slips?page=${p + i}&limit=100`).then(r => r.json() as Promise<ApiResponse>)
+        )
+        const results = await Promise.all(batch)
+        results.forEach(r => collected.push(...r.slips))
+        setFetchAllProgress((p + BATCH - 1) / totalPages)
+      }
+      setAllSlips(collected)
+    } catch (e) {
+      console.error('fetchAll error:', e)
+    } finally {
+      setFetchingAll(false)
+      setFetchAllProgress(0)
+    }
+  }, [])
+
+  // sorted view: if allSlips loaded use it, else use current page
+  const SORT_PAGE_SIZE = LIMIT
+  const sortedAll = allSlips && sortDir !== null
+    ? [...allSlips].sort((a, b) => sortDir === 'desc' ? b.amount - a.amount : a.amount - b.amount)
+    : null
+
+  const sortPage = sortedAll
+    ? Math.min(page, Math.ceil(sortedAll.length / SORT_PAGE_SIZE))
+    : page
+
+  const displaySlips = sortedAll
+    ? sortedAll.slice((sortPage - 1) * SORT_PAGE_SIZE, sortPage * SORT_PAGE_SIZE)
+    : sortDir !== null && data?.slips
+      ? [...data.slips].sort((a, b) => sortDir === 'desc' ? b.amount - a.amount : a.amount - b.amount)
+      : data?.slips ?? []
+
+  const displayTotalPages = sortedAll
+    ? Math.ceil(sortedAll.length / SORT_PAGE_SIZE)
+    : data?.totalPages ?? 1
+
+  const displayTotal = sortedAll ? sortedAll.length : data?.total ?? 0
 
   const renderPagination = () => {
     if (!data) return null
-    const { totalPages } = data
+    const totalPages = displayTotalPages
+    const curPage = sortedAll ? sortPage : page
     const pages: (number | '...')[] = []
     if (totalPages <= 7) {
       for (let i = 1; i <= totalPages; i++) pages.push(i)
     } else {
       pages.push(1)
-      if (page > 3) pages.push('...')
-      for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i)
-      if (page < totalPages - 2) pages.push('...')
+      if (curPage > 3) pages.push('...')
+      for (let i = Math.max(2, curPage - 1); i <= Math.min(totalPages - 1, curPage + 1); i++) pages.push(i)
+      if (curPage < totalPages - 2) pages.push('...')
       pages.push(totalPages)
     }
     return (
       <nav className="pagination" aria-label="การแบ่งหน้า">
-        <button className="page-btn nav-btn" onClick={() => goTo(page - 1)} disabled={page === 1} aria-label="ก่อนหน้า">
+        <button className="page-btn nav-btn" onClick={() => goTo(curPage - 1)} disabled={curPage === 1} aria-label="ก่อนหน้า">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6" /></svg>
         </button>
         {pages.map((p, i) =>
           p === '...'
             ? <span key={`d${i}`} className="page-dots">…</span>
-            : <button key={p} className={`page-btn${p === page ? ' active' : ''}`} onClick={() => goTo(p as number)} aria-current={p === page ? 'page' : undefined}>{p}</button>
+            : <button key={p} className={`page-btn${p === curPage ? ' active' : ''}`} onClick={() => goTo(p as number)} aria-current={p === curPage ? 'page' : undefined}>{p}</button>
         )}
-        <button className="page-btn nav-btn" onClick={() => goTo(page + 1)} disabled={page === data.totalPages} aria-label="ถัดไป">
+        <button className="page-btn nav-btn" onClick={() => goTo(curPage + 1)} disabled={curPage === totalPages} aria-label="ถัดไป">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6" /></svg>
         </button>
       </nav>
@@ -177,11 +282,16 @@ export default function App() {
       <header className="header">
         <div className="container header-inner">
           <div className="brand">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <rect x="2" y="5" width="20" height="14" rx="2" />
-              <path d="M2 10h20M7 15h2M12 15h5" />
-            </svg>
-            <span>Whatsek Slips</span>
+            <div className="brand-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" strokeWidth="2">
+                <rect x="2" y="5" width="20" height="14" rx="2" />
+                <path d="M2 10h20M7 15h2M12 15h5" />
+              </svg>
+            </div>
+            <div>
+              <div className="brand-name">Whatsek Slips</div>
+              <div className="brand-sub">ระบบติดตามสลิปโอนเงิน</div>
+            </div>
           </div>
         </div>
       </header>
@@ -194,9 +304,18 @@ export default function App() {
               <div className="stat-icon">
                 <span className="baht-icon">฿</span>
               </div>
-              <div>
+              <div className="stat-body">
                 <div className="stat-label">ยอดรวมทั้งหมด</div>
-                <div className="stat-value">{formatBaht(animatedTotal)}</div>
+                <div className="stat-value-wrap">
+                  <span className="stat-value">
+                    {Math.floor(animatedTotal).toLocaleString('th-TH')}
+                  </span>
+                  <span className="stat-decimal">
+                    .{String(Math.round((animatedTotal % 1) * 100)).padStart(2, '0')}
+                  </span>
+                  <span className="stat-currency">THB</span>
+                </div>
+                <RealtimeDot />
               </div>
             </div>
             <div className="stat-card">
@@ -205,7 +324,7 @@ export default function App() {
                   <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /><path d="M9 12h6M9 16h4" />
                 </svg>
               </div>
-              <div>
+              <div className="stat-body">
                 <div className="stat-label">จำนวนสลิป</div>
                 <div className="stat-value">{data.total.toLocaleString('th-TH')}</div>
               </div>
@@ -224,27 +343,47 @@ export default function App() {
           </div>
         )}
 
-        {/* Table */}
+        {/* Table / Cards */}
         <div className="table-section">
           <div className="table-wrap">
-            <div className="table-body-wrap">
+            <div className="table-body-wrap" ref={tableBodyRef}>
               <table className="table" aria-label="รายการสลิปโอนเงิน">
                 <thead>
                   <tr>
                     <th>#</th>
                     <th>การโอนเงิน</th>
                     <th>
-                      <button className="sort-btn" onClick={toggleSort} aria-label="เรียงตามจำนวนเงิน">
-                        จำนวนเงิน
-                        <span className="sort-icon">
-                          {sortDir === 'asc'
-                            ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                            : sortDir === 'desc'
-                            ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-                            : <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
-                          }
-                        </span>
-                      </button>
+                      <div className="sort-menu-wrap">
+                        <button className={`sort-btn${sortDir !== null ? ' active' : ''}`} onClick={toggleSort} aria-label="เรียงตามจำนวนเงิน" aria-expanded={sortMenuOpen}>
+                          จำนวนเงิน
+                          <span className="sort-icon">
+                            {sortDir === 'asc'
+                              ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                              : sortDir === 'desc'
+                              ? <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                              : <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
+                            }
+                          </span>
+                        </button>
+                        {sortMenuOpen && (
+                          <div className="sort-dropdown" role="menu">
+                            <button className={`sort-option${sortDir === 'desc' ? ' selected' : ''}`} onClick={() => selectSort('desc')} role="menuitem">
+                              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                              มากไปน้อย
+                            </button>
+                            <button className={`sort-option${sortDir === 'asc' ? ' selected' : ''}`} onClick={() => selectSort('asc')} role="menuitem">
+                              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                              น้อยไปมาก
+                            </button>
+                            {sortDir !== null && (
+                              <button className="sort-option reset" onClick={() => selectSort(null)} role="menuitem">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                                ลำดับปกติ
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </th>
                     <th>วันที่โอน</th>
                     <th>อัปโหลดโดย</th>
@@ -261,10 +400,10 @@ export default function App() {
                           <td><span className="skel short" /></td>
                         </tr>
                       ))
-                    : sortedSlips.map((slip, idx) => (
+                    : displaySlips.map((slip, idx) => (
                         <tr key={slip.id}>
-                          <td className="col-id" data-label="#">{((page - 1) * LIMIT) + idx + 1}</td>
-                          <td className="col-transfer" data-label="การโอนเงิน">
+                          <td className="col-id">{((sortedAll ? sortPage : page) - 1) * LIMIT + idx + 1}</td>
+                          <td className="col-transfer">
                             <div className="transfer-flow">
                               <span className="transfer-sender">{slip.sender}</span>
                               <span className="transfer-arrow">
@@ -273,9 +412,9 @@ export default function App() {
                               <span className="transfer-receiver">{slip.receiver}</span>
                             </div>
                           </td>
-                          <td className="col-amount" data-label="จำนวนเงิน">{formatBaht(slip.amount)}</td>
-                          <td className="col-date" data-label="วันที่โอน">{formatDate(slip.transferDate)}</td>
-                          <td className="col-uploader" data-label="อัปโหลดโดย">{slip.uploader}</td>
+                          <td className="col-amount">{formatBaht(slip.amount)}</td>
+                          <td className="col-date">{formatDate(slip.transferDate)}</td>
+                          <td className="col-uploader">{slip.uploader}</td>
                         </tr>
                       ))
                   }
@@ -284,11 +423,104 @@ export default function App() {
             </div>
           </div>
 
+          {/* Fetch-all progress */}
+          {fetchingAll && (
+            <div className="fetchall-progress">
+              <div className="fetchall-bar" style={{ width: `${Math.round(fetchAllProgress * 100)}%` }} />
+              <span className="fetchall-label">กำลังโหลดข้อมูลทั้งหมด {Math.round(fetchAllProgress * 100)}%</span>
+            </div>
+          )}
+
+          {/* Mobile card list */}
+          <div className="card-list">
+            <div className="card-list-header">
+              <span className="card-list-count">
+                {sortedAll
+                  ? `เรียงแล้ว · ${displayTotal.toLocaleString('th-TH')} รายการ`
+                  : `${data?.total.toLocaleString('th-TH') ?? '—'} รายการ`
+                }
+              </span>
+              <div className="sort-menu-wrap">
+                <button className={`mobile-sort-btn${sortDir !== null ? ' active' : ''}`} onClick={toggleSort} aria-expanded={sortMenuOpen}>
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M3 6h18M7 12h10M11 18h2"/>
+                  </svg>
+                  {sortDir === 'desc' ? 'มากไปน้อย' : sortDir === 'asc' ? 'น้อยไปมาก' : 'เรียงตามยอด'}
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M6 9l6 6 6-6"/>
+                  </svg>
+                </button>
+                {sortMenuOpen && (
+                  <div className="sort-dropdown" role="menu">
+                    <button className={`sort-option${sortDir === 'desc' ? ' selected' : ''}`} onClick={() => selectSort('desc')} role="menuitem">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                      มากไปน้อย
+                    </button>
+                    <button className={`sort-option${sortDir === 'asc' ? ' selected' : ''}`} onClick={() => selectSort('asc')} role="menuitem">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                      น้อยไปมาก
+                    </button>
+                    {sortDir !== null && (
+                      <button className="sort-option reset" onClick={() => selectSort(null)} role="menuitem">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                        ลำดับปกติ
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            {loading
+              ? Array.from({ length: LIMIT }).map((_, i) => (
+                  <div key={i} className="slip-card slip-card--skeleton">
+                    <div className="sc-top">
+                      <span className="skel mid" />
+                      <span className="skel short" />
+                    </div>
+                    <div className="sc-transfer">
+                      <span className="skel wide" />
+                      <span className="skel" style={{width:16}} />
+                      <span className="skel wide" />
+                    </div>
+                    <div className="sc-bottom">
+                      <span className="skel mid" />
+                      <span className="skel short" />
+                    </div>
+                  </div>
+                ))
+              : displaySlips.map((slip, idx) => (
+                  <div key={slip.id} className="slip-card">
+                    <div className="sc-top">
+                      <div className="sc-amount">{formatBaht(slip.amount)}</div>
+                      <div className="sc-num">#{((sortedAll ? sortPage : page) - 1) * LIMIT + idx + 1}</div>
+                    </div>
+                    <div className="sc-transfer">
+                      <span className="sc-sender">{slip.sender}</span>
+                      <span className="sc-arrow">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                      </span>
+                      <span className="sc-receiver">{slip.receiver}</span>
+                    </div>
+                    <div className="sc-bottom">
+                      <span className="sc-date">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                        {formatDate(slip.transferDate)}
+                      </span>
+                      <span className="sc-uploader">{slip.uploader}</span>
+                    </div>
+                  </div>
+                ))
+            }
+          </div>
+
           {/* Pagination */}
           {!loading && data && (
             <div className="pagination-wrap">
               <span className="page-info">
-                แสดง {((page - 1) * LIMIT) + 1}–{Math.min(page * LIMIT, data.total)} จาก {data.total.toLocaleString('th-TH')} รายการ
+                {sortedAll
+                  ? <>เรียงแล้ว · แสดง {(sortPage - 1) * LIMIT + 1}–{Math.min(sortPage * LIMIT, displayTotal)} จาก {displayTotal.toLocaleString('th-TH')} รายการ</>
+                  : <>แสดง {((page - 1) * LIMIT) + 1}–{Math.min(page * LIMIT, data.total)} จาก {data.total.toLocaleString('th-TH')} รายการ</>
+                }
               </span>
               <div className="pagination-right">
                 {renderPagination()}
