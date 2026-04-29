@@ -1023,3 +1023,21 @@ body {
   .footer-inner { flex-direction: column; align-items: flex-start; gap: 6px; }
   .footer-desc { font-size: 11.5px; }
 }
+
+/* ============================================================
+   DISCLAIMER BANNER
+   ============================================================ */
+.disclaimer-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(251,191,36,.06);
+  border: 1px solid rgba(251,191,36,.2);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: rgba(251,191,36,.8);
+  line-height: 1.5;
+}
+
+.disclaimer-banner svg { flex-shrink: 0; color: #fbbf24; }

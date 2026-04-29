@@ -297,6 +297,11 @@ export default function App() {
       </header>
 
       <main className="main">
+        {/* Disclaimer banner */}
+        <div className="disclaimer-banner">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+          <span>website นี้ไม่มีเจตนาที่ไม่ดี ทำขึ้นเพื่อดูข้อมูลบนมือถือได้ง่าย หากทำผิดพลาดยินดีปิดทันที</span>
+        </div>
         {/* Summary */}
         {data && (
           <div className="summary-row">
@@ -538,7 +543,7 @@ export default function App() {
           </div>
           <div className="footer-credit">
             ขออนุญาต
-            <span className="footer-names">พี่คิง & พี่มาลี</span>
+            <span className="footer-names">พี่คิง & พี่มาลี & ทีมงานทุกๆคน</span>
             · ข้อมูลจาก
             <a href="http://whatsek.com/" target="_blank" rel="noopener noreferrer" className="footer-link">
               whatsek.com
