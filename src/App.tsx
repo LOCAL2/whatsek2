@@ -534,6 +534,7 @@ export default function App() {
         <div className="container footer-inner">
           <div className="footer-desc">
             <span>สร้างมาเพื่อดูข้อมูลสลิปบนมือถือได้ง่าย · กรองยอดเงินได้ · ยอดรวมอัปเดตอัตโนมัติ</span>
+            <span className="footer-disclaimer">ไม่มีเจตนาที่ไม่ดี หากทำผิดพลาดยินดีปิด website ทันที</span>
           </div>
           <div className="footer-credit">
             ขออนุญาต
