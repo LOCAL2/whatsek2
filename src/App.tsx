@@ -174,6 +174,14 @@ export default function App() {
         const res = await fetch(`${API_BASE}/slips?page=${p}&limit=${LIMIT}`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const json: ApiResponse = await res.json()
+        // redirect to last page if requested page exceeds totalPages
+        if (p > json.totalPages && json.totalPages > 0) {
+          const params = new URLSearchParams(window.location.search)
+          params.set('page', String(json.totalPages))
+          window.history.replaceState(null, '', `?${params.toString()}`)
+          setPage(json.totalPages)
+          return
+        }
         setData(json)
         updateTotal(json.totalAmount)
       } catch (e) {
@@ -429,7 +437,7 @@ export default function App() {
         <div className="disclaimer-wrap">
           <div className="disclaimer-banner">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-            <span>website นี้ไม่มีเจตนาที่ไม่ดี ทำขึ้นเพื่อดูข้อมูลบนมือถือได้ง่าย กรองข้อมูลได้ ค้นหาข้อมูลได้ หากทำผิดพลาดยินดีปิด Website ทันที</span>
+            <span>website นี้ไม่มีเจตนาที่ไม่ดี ทำขึ้นเพื่อดูข้อมูลบนมือถือได้ง่าย กรองข้อมูลได้ ค้นหาข้อมูลได้ หากทำผิดพลาดยินดีปิด Website ทันที ขอให้ได้เงินคืนครบทุกบาท ทุกสตางค์กันนะครับ ขอบคุณครับ</span>
           </div>
         </div>
         {/* Summary */}
@@ -772,11 +780,15 @@ export default function App() {
               <a href="http://whatsek.com/" target="_blank" rel="noopener noreferrer" className="footer-link">
                 whatsek.com
                 <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>
+                <span className="link-preview">
+                  <img
+                    src="/whatsek-preview.jpg"
+                    alt="whatsek.com preview"
+                    className="link-preview-img"
+                  />
+                </span>
               </a>
             </div>
-          </div>
-          <div className="footer-right">
-            <span className="footer-disclaimer">ไม่มีเจตนาที่ไม่ดี หากทำผิดพลาดยินดีปิด website ทันที</span>
           </div>
         </div>
       </footer>
