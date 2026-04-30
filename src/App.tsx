@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import './App.css'
 
 const API_BASE = '/api'
@@ -33,13 +33,16 @@ function formatBaht(amount: number) {
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
-  if (d.getFullYear() === 1970) return 'ไม่พบวันที่ในสลิป'
-  return d.toLocaleDateString('th-TH', {
-    year: '2-digit',
+  const y = d.getFullYear()
+  const currentYear = new Date().getFullYear()
+  if (y === 1970 || y > currentYear) return 'ไม่พบวันที่ในสลิป'
+  return d.toLocaleDateString('th-TH-u-ca-gregory', {
+    year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
   })
 }
 
@@ -72,11 +75,26 @@ function useAnimatedNumber(target: number, duration = 800) {
   return display
 }
 
-function RealtimeDot() {
+const RealtimeDot = memo(function RealtimeDot() {
   return (
     <div className="stat-realtime">
       <span className="stat-dot" aria-hidden="true" />
       อัปเดตอัตโนมัติ
+    </div>
+  )
+})
+
+function AnimatedTotal({ value }: { value: number }) {
+  const animated = useAnimatedNumber(value)
+  return (
+    <div className="stat-value-wrap">
+      <span className="stat-value">
+        {Math.floor(animated).toLocaleString('th-TH')}
+      </span>
+      <span className="stat-decimal">
+        .{String(Math.round((animated % 1) * 100)).padStart(2, '0')}
+      </span>
+      <span className="stat-currency">THB</span>
     </div>
   )
 }
@@ -84,6 +102,11 @@ function RealtimeDot() {
 export default function App() {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [totalAmount, setTotalAmount] = useState(0)
+  const [totalDelta, setTotalDelta] = useState<number | null>(null)
+  const [deltaVisible, setDeltaVisible] = useState(false)
+  const [countDelta, setCountDelta] = useState<number | null>(null)
+  const [countDeltaVisible, setCountDeltaVisible] = useState(false)
+  const prevTotalRef = useRef<number>(0)
   const [page, setPage] = useState(() => {
     const p = new URLSearchParams(window.location.search).get('page')
     return p ? Math.max(1, parseInt(p)) : 1
@@ -92,11 +115,44 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc' | null>(null)
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
+  const [yearMenuOpen, setYearMenuOpen] = useState(false)
   const [allSlips, setAllSlips] = useState<Slip[] | null>(null)
   const [fetchingAll, setFetchingAll] = useState(false)
   const [fetchAllProgress, setFetchAllProgress] = useState(0)
+  const [filterYear, setFilterYear] = useState<number | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const tableBodyRef = useRef<HTMLDivElement>(null)
+
+  const deltaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const countDeltaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const updateTotal = useCallback((newAmount: number) => {
+    setTotalAmount(prev => {
+      if (prev > 0 && newAmount !== prev) {
+        const diff = newAmount - prev
+        setTotalDelta(diff)
+        setDeltaVisible(true)
+        if (deltaTimerRef.current) clearTimeout(deltaTimerRef.current)
+        deltaTimerRef.current = setTimeout(() => setDeltaVisible(false), 10000)
+      }
+      prevTotalRef.current = newAmount
+      return newAmount
+    })
+  }, [])
+
+  const updateCount = useCallback((newCount: number) => {
+    setData(prev => {
+      if (prev && prev.total > 0 && newCount !== prev.total) {
+        const diff = newCount - prev.total
+        setCountDelta(diff)
+        setCountDeltaVisible(true)
+        if (countDeltaTimerRef.current) clearTimeout(countDeltaTimerRef.current)
+        countDeltaTimerRef.current = setTimeout(() => setCountDeltaVisible(false), 10000)
+      }
+      return prev ? { ...prev, total: newCount } : prev
+    })
+  }, [])
 
   // measure actual row height and set exact container height for 10 rows
   useEffect(() => {
@@ -109,8 +165,6 @@ export default function App() {
     tableBodyRef.current.style.height = `${theadH + rowH * LIMIT}px`
   }, [loading])
 
-  const animatedTotal = useAnimatedNumber(totalAmount)
-
   const fetchData = useCallback(async (p: number) => {
     setLoading(true)
     setError(null)
@@ -121,7 +175,7 @@ export default function App() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const json: ApiResponse = await res.json()
         setData(json)
-        setTotalAmount(json.totalAmount)
+        updateTotal(json.totalAmount)
       } catch (e) {
         if (tries > 0) {
           await new Promise(r => setTimeout(r, 1500))
@@ -136,15 +190,26 @@ export default function App() {
     setLoading(false)
   }, [])
 
-  // poll totalAmount realtime — reuse same page/limit, no extra request
+  // poll realtime — update slips, totalAmount, total, totalPages
   useEffect(() => {
     const id = setInterval(async () => {
       try {
         const res = await fetch(`${API_BASE}/slips?page=${page}&limit=${LIMIT}`)
         if (!res.ok) return
         const json: ApiResponse = await res.json()
-        setTotalAmount(json.totalAmount)
-        setData(prev => prev ? { ...prev, total: json.total, totalPages: json.totalPages } : prev)
+        updateTotal(json.totalAmount)
+        updateCount(json.total)
+        // update current page slips (only when not in sorted/filtered mode)
+        setData(prev => prev ? { ...prev, slips: json.slips, totalPages: json.totalPages } : prev)
+        // if allSlips is loaded, refresh the new entries by re-fetching page 1 to detect new slips
+        setAllSlips(prev => {
+          if (!prev) return prev
+          // merge new slips into allSlips (add any new ids, update existing)
+          const existingIds = new Set(prev.map(s => s.id))
+          const newSlips = json.slips.filter(s => !existingIds.has(s.id))
+          if (newSlips.length === 0) return prev
+          return [...newSlips, ...prev]
+        })
       } catch { /* silent */ }
     }, POLL_INTERVAL)
     return () => clearInterval(id)
@@ -182,6 +247,32 @@ export default function App() {
     }
   }
 
+  const selectYear = (year: number | null) => {
+    setFilterYear(year)
+    setPage(1)
+    if (year !== null && allSlips === null && !fetchingAll) {
+      fetchAllSlips()
+    }
+  }
+
+  const handleSearch = (q: string) => {
+    setSearchQuery(q)
+    setPage(1)
+    if (q.trim() !== '' && allSlips === null && !fetchingAll) {
+      fetchAllSlips()
+    }
+  }
+
+  // available years from allSlips — only reasonable years (2015 to current year)
+  const currentYear = new Date().getFullYear()
+  const availableYears = allSlips
+    ? [...new Set(
+        allSlips
+          .map(s => new Date(s.transferDate).getFullYear())
+          .filter(y => y >= 2015 && y <= currentYear)
+      )].sort((a, b) => b - a)
+    : []
+
   useEffect(() => {
     if (!sortMenuOpen) return
     const close = (e: MouseEvent) => {
@@ -192,11 +283,21 @@ export default function App() {
     return () => document.removeEventListener('mousedown', close)
   }, [sortMenuOpen])
 
+  useEffect(() => {
+    if (!yearMenuOpen) return
+    const close = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.year-menu-wrap')) setYearMenuOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [yearMenuOpen])
+
   const fetchAllSlips = useCallback(async () => {
     setFetchingAll(true)
     setFetchAllProgress(0)
     try {
-      // get total first
+      // get total pages first
       const first = await fetch(`${API_BASE}/slips?page=1&limit=100`)
       if (!first.ok) throw new Error(`HTTP ${first.status}`)
       const firstJson: ApiResponse = await first.json()
@@ -204,16 +305,22 @@ export default function App() {
       const collected: Slip[] = [...firstJson.slips]
       setFetchAllProgress(1 / totalPages)
 
-      // fetch remaining pages in batches of 5
-      const BATCH = 5
-      for (let p = 2; p <= totalPages; p += BATCH) {
-        const batch = Array.from({ length: Math.min(BATCH, totalPages - p + 1) }, (_, i) =>
-          fetch(`${API_BASE}/slips?page=${p + i}&limit=100`).then(r => r.json() as Promise<ApiResponse>)
+      if (totalPages > 1) {
+        // fire ALL remaining requests simultaneously
+        let done = 1
+        const requests = Array.from({ length: totalPages - 1 }, (_, i) =>
+          fetch(`${API_BASE}/slips?page=${i + 2}&limit=100`)
+            .then(r => r.json() as Promise<ApiResponse>)
+            .then(json => {
+              done++
+              setFetchAllProgress(done / totalPages)
+              return json
+            })
         )
-        const results = await Promise.all(batch)
+        const results = await Promise.all(requests)
         results.forEach(r => collected.push(...r.slips))
-        setFetchAllProgress((p + BATCH - 1) / totalPages)
       }
+
       setAllSlips(collected)
     } catch (e) {
       console.error('fetchAll error:', e)
@@ -225,9 +332,29 @@ export default function App() {
 
   // sorted view: if allSlips loaded use it, else use current page
   const SORT_PAGE_SIZE = LIMIT
-  const sortedAll = allSlips && sortDir !== null
-    ? [...allSlips].sort((a, b) => sortDir === 'desc' ? b.amount - a.amount : a.amount - b.amount)
-    : null
+
+  const trimmed = searchQuery.trim().toLowerCase()
+
+  const matchesSearch = (s: Slip) => {
+    if (trimmed === '') return true
+    // exact match for numeric queries, substring for text
+    const isNumeric = /^\d+(\.\d+)?$/.test(trimmed)
+    if (isNumeric) return s.amount === parseFloat(trimmed)
+    return [s.sender, s.receiver, s.uploader].some(v => v.toLowerCase().includes(trimmed))
+  }
+
+  const baseSlips = allSlips && (sortDir !== null || filterYear !== null || trimmed !== '')
+    ? allSlips.filter(s => {
+        const yearOk = filterYear === null || new Date(s.transferDate).getFullYear() === filterYear
+        return yearOk && matchesSearch(s)
+      })
+    : trimmed !== '' && allSlips
+      ? allSlips.filter(s => matchesSearch(s))
+      : null
+
+  const sortedAll = baseSlips && sortDir !== null
+    ? [...baseSlips].sort((a, b) => sortDir === 'desc' ? b.amount - a.amount : a.amount - b.amount)
+    : baseSlips
 
   const sortPage = sortedAll
     ? Math.min(page, Math.ceil(sortedAll.length / SORT_PAGE_SIZE))
@@ -293,6 +420,7 @@ export default function App() {
               <div className="brand-sub">ระบบติดตามสลิปโอนเงิน</div>
             </div>
           </div>
+          <div className="header-joke">ชะเอิงเอย ชะเอิงเอย ตลกจังเลย</div>
         </div>
       </header>
 
@@ -301,7 +429,7 @@ export default function App() {
         <div className="disclaimer-wrap">
           <div className="disclaimer-banner">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-            <span>website นี้ไม่มีเจตนาที่ไม่ดี ทำขึ้นเพื่อดูข้อมูลบนมือถือได้ง่าย หากทำผิดพลาดยินดีปิด Website ทันที</span>
+            <span>website นี้ไม่มีเจตนาที่ไม่ดี ทำขึ้นเพื่อดูข้อมูลบนมือถือได้ง่าย กรองข้อมูลได้ ค้นหาข้อมูลได้ หากทำผิดพลาดยินดีปิด Website ทันที</span>
           </div>
         </div>
         {/* Summary */}
@@ -312,16 +440,15 @@ export default function App() {
                 <span className="baht-icon">฿</span>
               </div>
               <div className="stat-body">
-                <div className="stat-label">ยอดรวมทั้งหมด</div>
-                <div className="stat-value-wrap">
-                  <span className="stat-value">
-                    {Math.floor(animatedTotal).toLocaleString('th-TH')}
-                  </span>
-                  <span className="stat-decimal">
-                    .{String(Math.round((animatedTotal % 1) * 100)).padStart(2, '0')}
-                  </span>
-                  <span className="stat-currency">THB</span>
+                <div className="stat-label">
+                  ยอดรวมทั้งหมด
+                  {deltaVisible && totalDelta !== null && (
+                    <span className={`total-delta${totalDelta >= 0 ? ' up' : ' down'}`}>
+                      {totalDelta >= 0 ? '+' : ''}{formatBaht(totalDelta)}
+                    </span>
+                  )}
                 </div>
+                <AnimatedTotal value={totalAmount} />
                 <RealtimeDot />
               </div>
             </div>
@@ -332,7 +459,14 @@ export default function App() {
                 </svg>
               </div>
               <div className="stat-body">
-                <div className="stat-label">จำนวนสลิป</div>
+                <div className="stat-label">
+                  จำนวนสลิป
+                  {countDeltaVisible && countDelta !== null && (
+                    <span className={`total-delta${countDelta >= 0 ? ' up' : ' down'}`}>
+                      {countDelta >= 0 ? '+' : ''}{countDelta.toLocaleString('th-TH')}
+                    </span>
+                  )}
+                </div>
                 <div className="stat-value">{data.total.toLocaleString('th-TH')}</div>
               </div>
             </div>
@@ -352,6 +486,30 @@ export default function App() {
 
         {/* Table / Cards */}
         <div className="table-section">
+
+          {/* Search bar */}
+          <div className="search-wrap">
+            <div className="search-box">
+              <svg className="search-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              <input
+                className="search-input"
+                type="search"
+                placeholder="ค้นหาผู้โอน, ผู้รับ, ผู้อัปโหลด, ยอดเงิน..."
+                value={searchQuery}
+                onChange={e => handleSearch(e.target.value)}
+                aria-label="ค้นหาสลิป"
+              />
+              {searchQuery && (
+                <button className="search-clear" onClick={() => handleSearch('')} aria-label="ล้างการค้นหา">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              )}
+            </div>
+            {fetchingAll && searchQuery && (
+              <span className="search-loading">กำลังโหลดข้อมูลทั้งหมด {Math.round(fetchAllProgress * 100)}%</span>
+            )}
+          </div>
+
           <div className="table-wrap">
             <div className="table-body-wrap" ref={tableBodyRef}>
               <table className="table" aria-label="รายการสลิปโอนเงิน">
@@ -392,7 +550,52 @@ export default function App() {
                         )}
                       </div>
                     </th>
-                    <th>วันที่โอน</th>
+                    <th>
+                      <div className="year-menu-wrap">
+                        <button
+                          className={`sort-btn${filterYear !== null ? ' active' : ''}`}
+                          onClick={() => {
+                            if (allSlips === null && !fetchingAll) fetchAllSlips()
+                            setYearMenuOpen(p => !p)
+                          }}
+                          aria-expanded={yearMenuOpen}
+                        >
+                          {filterYear ? `ปี ${filterYear}` : 'วันที่โอน'}
+                          <span className="sort-icon">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
+                          </span>
+                        </button>
+                        {yearMenuOpen && (
+                          <div className="sort-dropdown year-dropdown" role="menu">
+                            <button
+                              className={`sort-option${filterYear === null ? ' selected' : ''}`}
+                              onClick={() => { selectYear(null); setYearMenuOpen(false) }}
+                              role="menuitem"
+                            >
+                              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                              ทั้งหมด
+                            </button>
+                            {fetchingAll && (
+                              <div className="sort-option" style={{cursor:'default', opacity:.6}}>
+                                <span className="fetchall-label" style={{padding:0}}>กำลังโหลด...</span>
+                              </div>
+                            )}
+                            {availableYears.map(y => (
+                              <button
+                                key={y}
+                                className={`sort-option${filterYear === y ? ' selected' : ''}`}
+                                onClick={() => { selectYear(y); setYearMenuOpen(false) }}
+                                role="menuitem"
+                              >
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                                {y}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </th>
+                    <th>วันที่อัปโหลด</th>
                     <th>อัปโหลดโดย</th>
                   </tr>
                 </thead>
@@ -402,6 +605,7 @@ export default function App() {
                         <tr key={i} className="skeleton-row">
                           <td><span className="skel" /></td>
                           <td><span className="skel wide" /></td>
+                          <td><span className="skel mid" /></td>
                           <td><span className="skel mid" /></td>
                           <td><span className="skel mid" /></td>
                           <td><span className="skel short" /></td>
@@ -421,6 +625,7 @@ export default function App() {
                           </td>
                           <td className="col-amount">{formatBaht(slip.amount)}</td>
                           <td className="col-date">{formatDate(slip.transferDate)}</td>
+                          <td className="col-date">{formatDate(slip.createdAt)}</td>
                           <td className="col-uploader">{slip.uploader}</td>
                         </tr>
                       ))
@@ -443,11 +648,25 @@ export default function App() {
             <div className="card-list-header">
               <span className="card-list-count">
                 {sortedAll
-                  ? `เรียงแล้ว · ${displayTotal.toLocaleString('th-TH')} รายการ`
+                  ? `${filterYear ? filterYear + ' · ' : ''}${displayTotal.toLocaleString('th-TH')} รายการ`
                   : `${data?.total.toLocaleString('th-TH') ?? '—'} รายการ`
                 }
               </span>
-              <div className="sort-menu-wrap">
+              <div className="mobile-toolbar-right">
+                {/* Year filter mobile */}
+                {availableYears.length > 0 && (
+                  <div className="sort-menu-wrap">
+                    <button
+                      className={`mobile-sort-btn${filterYear !== null ? ' active' : ''}`}
+                      onClick={() => {}}
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                      {filterYear ?? 'ทุกปี'}
+                    </button>
+                  </div>
+                )}
+                <div className="sort-menu-wrap">
                 <button className={`mobile-sort-btn${sortDir !== null ? ' active' : ''}`} onClick={toggleSort} aria-expanded={sortMenuOpen}>
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <path d="M3 6h18M7 12h10M11 18h2"/>
@@ -475,6 +694,7 @@ export default function App() {
                     )}
                   </div>
                 )}
+              </div>
               </div>
             </div>
             {loading
@@ -511,7 +731,11 @@ export default function App() {
                     <div className="sc-bottom">
                       <span className="sc-date">
                         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                        {formatDate(slip.transferDate)}
+                        วันที่โอน: {formatDate(slip.transferDate)}
+                      </span>
+                      <span className="sc-date">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                        อัปโหลด: {formatDate(slip.createdAt)}
                       </span>
                       <span className="sc-uploader">{slip.uploader}</span>
                     </div>

@@ -85,6 +85,12 @@ body {
 
 .brand { display: flex; align-items: center; gap: 10px; }
 
+.header-joke {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
 .brand-icon {
   width: 34px;
   height: 34px;
@@ -130,10 +136,10 @@ body {
   height: 6px;
   border-radius: 50%;
   background: var(--green);
-  animation: pulse-dot 2s infinite;
+  animation: pulse-dot-fast 2s infinite;
 }
 
-@keyframes pulse-dot {
+@keyframes pulse-dot-fast {
   0%, 100% { opacity: 1; transform: scale(1); }
   50%       { opacity: .4; transform: scale(.65); }
 }
@@ -249,6 +255,36 @@ body {
 
 .stat-card.accent .stat-label { color: rgba(147,197,253,.55); }
 
+.total-delta {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 20px;
+  letter-spacing: .3px;
+  animation: delta-pop .3s cubic-bezier(.34,1.56,.64,1);
+  font-variant-numeric: tabular-nums;
+}
+
+.total-delta.up {
+  color: #4ade80;
+  background: rgba(74,222,128,.15);
+  border: 1px solid rgba(74,222,128,.25);
+}
+
+.total-delta.down {
+  color: #f87171;
+  background: rgba(248,113,113,.15);
+  border: 1px solid rgba(248,113,113,.25);
+}
+
+@keyframes delta-pop {
+  from { opacity: 0; transform: scale(.7) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
 .stat-value-wrap {
   display: flex;
   align-items: baseline;
@@ -305,13 +341,7 @@ body {
   height: 5px;
   border-radius: 50%;
   background: var(--green);
-  animation: pulse-dot 3s ease-in-out infinite;
   flex-shrink: 0;
-}
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: .35; transform: scale(.6); }
 }
 
 /* ============================================================
@@ -321,6 +351,70 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Search */
+.search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.search-box {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  padding: 8px 34px 8px 34px;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  -webkit-appearance: none;
+  transition: border-color 150ms;
+  box-sizing: border-box;
+}
+
+.search-input::placeholder { color: var(--text-muted); }
+.search-input:focus { outline: none; }
+.search-input::-webkit-search-cancel-button { display: none; }
+
+.search-clear {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  transition: color 150ms;
+}
+.search-clear:hover { color: var(--text-secondary); }
+
+.search-loading {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .table-wrap {
@@ -493,6 +587,18 @@ body {
 .sort-menu-wrap {
   position: relative;
   display: inline-block;
+}
+
+.year-menu-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.year-dropdown {
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
 }
 
 .sort-dropdown {
@@ -760,6 +866,66 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.mobile-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ============================================================
+   TOOLBAR (desktop year filter)
+   ============================================================ */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.year-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.year-btn {
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border-1);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur) var(--ease);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.year-btn:hover {
+  border-color: var(--border-2);
+  color: var(--text-primary);
+  background: var(--surface-2);
+}
+
+.year-btn.active {
+  background: var(--blue-600);
+  border-color: var(--blue-600);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(37,99,235,.4);
+}
+
 .mobile-sort-btn {
   display: flex;
   align-items: center;
@@ -803,6 +969,7 @@ body {
 
   /* Hide desktop table, show cards */
   .table-wrap { display: none; }
+  .toolbar { display: none; }
   .fetchall-progress { display: flex; }
   .card-list {
     display: flex;
@@ -905,8 +1072,8 @@ body {
   /* Bottom row: date + uploader */
   .sc-bottom {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 6px;
     padding-top: 8px;
     border-top: 1px solid rgba(30,45,71,.5);
   }
@@ -925,6 +1092,7 @@ body {
     background: var(--surface-2);
     padding: 2px 8px;
     border-radius: 4px;
+    align-self: flex-start;
   }
 
   /* Skeleton card */
@@ -1019,9 +1187,15 @@ body {
 
 .footer-disclaimer {
   font-size: 11.5px;
-  color: var(--text-muted);
-  opacity: .7;
+  color: var(--text-secondary);
+  opacity: 1;
   text-align: right;
+}
+
+.footer-disclaimer--joke {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 11px;
 }
 
 @media (max-width: 600px) {
@@ -1038,9 +1212,6 @@ body {
 /* ============================================================
    DISCLAIMER BANNER
    ============================================================ */
-.disclaimer-wrap {
-  /* inherits padding: 0 28px from .main > * */
-}
 
 .disclaimer-banner {
   display: flex;
